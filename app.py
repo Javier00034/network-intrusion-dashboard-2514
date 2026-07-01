@@ -6,6 +6,12 @@ from src.data_cleaning import load_and_clean_data
 from src.train_models import train_and_compare_models
 
 
+@st.cache_data(show_spinner=False)
+def load_and_clean_data_cached(file_path):
+    """Cached wrapper so the CSV isn't re-read/cleaned on every rerun."""
+    return load_and_clean_data(file_path)
+
+
 st.set_page_config(
     page_title="Network Intrusion Detection Dashboard",
     page_icon="🛡️",
@@ -64,9 +70,14 @@ else:
     st.stop()
 
 try:
-    df, X, y = load_and_clean_data(file_path)
-except Exception as e:
+    df, X, y = load_and_clean_data_cached(file_path)
+except ValueError as e:
+    # Expected, user-facing validation error (e.g. missing Label column).
     st.error(f"Error loading dataset: {e}")
+    st.stop()
+except Exception:
+    # Unexpected error: show a generic message, keep details out of the UI.
+    st.error("An unexpected error occurred while loading the dataset. Please check the file format.")
     st.stop()
 
 # -----------------------------
@@ -82,20 +93,8 @@ if sample_enabled and len(df) > sample_size:
 # -----------------------------
 # Store ML results in session state
 # -----------------------------
-if "results_df" not in st.session_state:
-    st.session_state.results_df = None
-
-if "rf_model" not in st.session_state:
-    st.session_state.rf_model = None
-
-if "X_test" not in st.session_state:
-    st.session_state.X_test = None
-
-if "y_test" not in st.session_state:
-    st.session_state.y_test = None
-
-if "model_predictions" not in st.session_state:
-    st.session_state.model_predictions = None
+for _key in ["results_df", "rf_model", "X_test", "y_test", "model_predictions", "feature_names"]:
+    st.session_state.setdefault(_key, None)
 
 
 # -----------------------------
@@ -223,13 +222,14 @@ elif page == "ML Analysis":
 
     if st.button("Run ML Analysis"):
         with st.spinner("Training and evaluating models. Please wait..."):
-            results_df, rf_model, scaler, X_test, y_test, model_predictions = train_and_compare_models(X, y)
+            training_result = train_and_compare_models(X, y)
 
-        st.session_state.results_df = results_df
-        st.session_state.rf_model = rf_model
-        st.session_state.X_test = X_test
-        st.session_state.y_test = y_test
-        st.session_state.model_predictions = model_predictions
+        st.session_state.results_df = training_result.results_df
+        st.session_state.rf_model = training_result.rf_model
+        st.session_state.X_test = training_result.X_test
+        st.session_state.y_test = training_result.y_test
+        st.session_state.model_predictions = training_result.predictions
+        st.session_state.feature_names = training_result.feature_names
 
         st.success("ML analysis completed.")
 
@@ -390,7 +390,7 @@ elif page == "Feature Importance":
         st.stop()
 
     feature_importance = pd.DataFrame({
-        "Feature": X.columns,
+        "Feature": st.session_state.feature_names,
         "Importance": st.session_state.rf_model.feature_importances_
     }).sort_values(by="Importance", ascending=False).head(15)
 

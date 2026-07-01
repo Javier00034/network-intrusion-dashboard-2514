@@ -14,6 +14,16 @@ def load_and_clean_data(file_path):
     5. Convert labels into binary format
        BENIGN = 0
        Attack = 1
+
+    Returns
+    -------
+    df : pd.DataFrame
+        The cleaned dataframe (including the original "Label" column and
+        the derived "Label_Binary" column).
+    X : pd.DataFrame
+        Numeric feature matrix (excludes the binary label).
+    y : pd.Series
+        Binary target labels.
     """
 
     df = pd.read_csv(file_path)
@@ -23,7 +33,15 @@ def load_and_clean_data(file_path):
 
     # Replace infinite values with NaN, then remove them
     df = df.replace([np.inf, -np.inf], np.nan)
+
+    rows_before = len(df)
     df = df.dropna()
+    rows_dropped = rows_before - len(df)
+    if rows_dropped > 0:
+        print(
+            f"[data_cleaning] Dropped {rows_dropped} of {rows_before} rows "
+            f"({rows_dropped / rows_before:.1%}) containing missing/infinite values."
+        )
 
     # Check if Label column exists
     if "Label" not in df.columns:
@@ -34,8 +52,8 @@ def load_and_clean_data(file_path):
         lambda x: 0 if str(x).upper() == "BENIGN" else 1
     )
 
-    # Keep only numeric columns for ML
-    numeric_df = df.select_dtypes(include=["int64", "float64"])
+    # Keep only numeric columns for ML (covers all int/float widths, not just 64-bit)
+    numeric_df = df.select_dtypes(include=[np.number])
 
     # Remove label from features if included
     if "Label_Binary" in numeric_df.columns:
